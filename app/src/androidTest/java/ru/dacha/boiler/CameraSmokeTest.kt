@@ -53,12 +53,18 @@ class CameraSmokeTest {
         shell("wm dismiss-keyguard")
         Scheduler.cancel(context)
     }
-    @Test fun cameraProducesDecodableJpeg() {
+    @Suppress("DEPRECATION")
+    @Test fun cameraProducesJpegAtMaximumSupportedResolution() {
         ActivityScenario.launch(MainActivity::class.java).use {
+            val camera = android.hardware.Camera.open()
+            val expected = try {
+                camera.parameters.supportedPictureSizes.maxOf { it.width.toLong() * it.height }
+            } finally { camera.release() }
             val bytes = CameraCapture.take(settings)
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             assertNotNull("Camera returned an invalid JPEG", bitmap)
             assertTrue(bitmap!!.width > 0 && bitmap.height > 0)
+            assertEquals("Photo must use the largest camera size", expected, bitmap.width.toLong() * bitmap.height)
             bitmap.recycle()
         }
     }
@@ -94,7 +100,6 @@ class CameraSmokeTest {
             }.apply { isDaemon = true; start() }
             val trigger = System.currentTimeMillis() - 1000
             settings.prefs.edit().putBoolean("enabled", true).putLong("next", trigger)
-                .putBoolean("emailPhotos", true).putBoolean("telegramPhotos", false)
                 .putString("host", "127.0.0.1").putInt("port", server.localPort).putBoolean("ssl", false)
                 .putString("user", "local-fixture").putString("from", "sender@example.org")
                 .putString("to", "recipient@example.org").commit()
@@ -138,7 +143,6 @@ class CameraSmokeTest {
                 } catch (_: java.io.IOException) { }
             }.apply { isDaemon = true; start() }
             settings.prefs.edit().putBoolean("enabled", true).putLong("next", System.currentTimeMillis() + 3600_000)
-                .putBoolean("emailPhotos", true).putBoolean("telegramPhotos", false)
                 .putString("host", "127.0.0.1").putInt("port", server.localPort).putBoolean("ssl", false)
                 .putString("user", "local-fixture").putString("from", "sender@example.org")
                 .putString("to", "recipient@example.org").commit()

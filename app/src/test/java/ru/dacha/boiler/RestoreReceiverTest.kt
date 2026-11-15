@@ -58,14 +58,6 @@ class RestoreReceiverTest {
         boot()
         assertEquals(123L, settings.pendingCapture)
     }
-    @Test fun pausedPhotoModeKeepsTelegramWakeupAfterReboot() {
-        settings.enabled = true
-        settings.prefs.edit().putBoolean("paused", true).putBoolean("remoteControl", true).commit()
-        settings.next = System.currentTimeMillis() - 60_000
-        boot()
-        assertEquals(0L, settings.pendingCapture)
-        assertEquals(1, shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms.size)
-    }
     @Test fun clockChangeRecomputesFutureSchedule() {
         settings.enabled = true
         settings.next = Long.MAX_VALUE

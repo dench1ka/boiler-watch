@@ -32,22 +32,12 @@ object Scheduler {
         val s = Settings(c)
         if (!s.enabled) { cancel(c); return }
         val now = System.currentTimeMillis()
-        if (s.paused || !s.hasPhotoRoute) alarm(c).cancel(intent(c, false))
-        else {
-            if (reset || s.next <= now) s.next = Schedule.next(s.times, now)
-            set(c, s.next, false)
-        }
-        if (s.usesTelegram) alarm(c).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, now + 15 * 60_000L, signal(c, 3, "telegram"))
-        else alarm(c).cancel(signal(c, 3, "telegram"))
-        if (s.heartbeat) {
-            val at = maxOf(now + 60_000, s.prefs.getLong("heartbeatNext", 0))
-            alarm(c).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, signal(c, 4, "heartbeat"))
-        } else alarm(c).cancel(signal(c, 4, "heartbeat"))
+        if (reset || s.next <= now) s.next = Schedule.next(s.times, now)
+        set(c, s.next, false)
     }
     fun retry(c: Context, delay: Long = 15 * 60_000L) = set(c, System.currentTimeMillis() + delay, true)
     fun cancel(c: Context) {
         alarm(c).cancel(intent(c, false)); alarm(c).cancel(intent(c, true))
-        alarm(c).cancel(signal(c, 3, "telegram")); alarm(c).cancel(signal(c, 4, "heartbeat"))
     }
     fun run(c: Context, manual: Boolean = false) {
         val live = MonitorService.instance
@@ -75,7 +65,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val s = Settings(context)
         if (!s.enabled) return
         val now = System.currentTimeMillis()
-        if (!s.paused && s.hasPhotoRoute && s.next in 1..now) {
+        if (s.next in 1..now) {
             if (s.pendingCapture == 0L) s.pendingCapture = s.next
             Scheduler.plan(context)
         }
@@ -89,7 +79,7 @@ class RestoreReceiver : BroadcastReceiver() {
         val s = Settings(context)
         if (!s.enabled) return
         val clockChanged = intent.action == Intent.ACTION_TIME_CHANGED || intent.action == Intent.ACTION_TIMEZONE_CHANGED
-        if (!clockChanged && !s.paused && s.hasPhotoRoute && s.next in 1..System.currentTimeMillis() && s.pendingCapture == 0L) s.pendingCapture = s.next
+        if (!clockChanged && s.next in 1..System.currentTimeMillis() && s.pendingCapture == 0L) s.pendingCapture = s.next
         Scheduler.plan(context, reset = clockChanged)
         EventLog.add(context, "Расписание восстановлено после ${intent.action}")
         Scheduler.run(context)

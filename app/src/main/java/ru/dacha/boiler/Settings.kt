@@ -15,6 +15,7 @@ import javax.crypto.spec.GCMParameterSpec
 @SuppressLint("ApplySharedPref")
 class Settings(val context: Context) {
     val prefs = context.getSharedPreferences("boiler", Context.MODE_PRIVATE)
+    init { LegacyUpgrade.apply(context, prefs) }
     var enabled: Boolean
         get() = prefs.getBoolean("enabled", false)
         set(v) { prefs.edit().putBoolean("enabled", v).commit() }
@@ -39,18 +40,6 @@ class Settings(val context: Context) {
     val rotation get() = prefs.getInt("rotation", 90)
     fun text(key: String) = prefs.getString(key, "—")!!
     fun status(key: String, value: String) { prefs.edit().putString(key, value).apply() }
-    val emailPhotos get() = prefs.getBoolean("emailPhotos", true)
-    val telegramPhotos get() = prefs.getBoolean("telegramPhotos", false)
-    val remoteControl get() = prefs.getBoolean("remoteControl", false)
-    val heartbeat get() = prefs.getBoolean("heartbeat", false)
-    val heartbeatTime get() = prefs.getString("heartbeatTime", "09:05")!!
-    val telegramChat get() = prefs.getLong("telegramChat", 0)
-    val telegramUser get() = prefs.getLong("telegramUser", 0)
-    val paused get() = prefs.getBoolean("paused", false)
-    val hasPhotoRoute get() = emailPhotos || telegramPhotos
-    val usesTelegram get() = telegramPhotos || remoteControl || heartbeat
-    val pairing get() = prefs.getLong("pairUntil", 0) > System.currentTimeMillis() && prefs.getString("pairCode", "")!!.isNotEmpty()
-    fun token() = decrypt(prefs.getString("telegramSecret", "")!!)
     fun password() = decrypt(prefs.getString("secret", "")!!)
     private fun decrypt(value: String): String {
         if (value.isEmpty()) return ""

@@ -68,7 +68,7 @@ class MailerMessageTest {
         val fresh = Mailer.compose(session, "sender@example.org", dir)
         assertFalse(fresh.subject.contains("ИЗ ОЧЕРЕДИ"))
     }
-    @Test fun telegramCaptionDistinguishesDelayedPhotoAndPreservesSchedule() {
+    @Test fun reportBodyDistinguishesDelayedPhotoAndPreservesSchedule() {
         val report = JSONObject(File(report(1794600000000L), "report.json").readText())
         val caption = ReportText.body(report, queued = true)
         assertTrue(caption.startsWith("Из очереди:"))

@@ -1,0 +1,114 @@
+{
+  "version": "0.3.0",
+  "verified_at_utc": "2026-11-15T17:32:47.909282+00:00",
+  "source": "Local macOS ARM64 run; GitHub Actions results recorded separately",
+  "offline_tests": 28,
+  "test_results": {
+    "unit_debug": {
+      "tests": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unit_release": {
+      "tests": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "devices": {
+      "tests": 30,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "total_test_executions": 286,
+  "android_emulators": [
+    {
+      "api": 25,
+      "version": "7.1.1",
+      "abi": "arm64-v8a",
+      "tests": 15
+    },
+    {
+      "api": 35,
+      "version": "15",
+      "abi": "arm64-v8a",
+      "tests": 15
+    }
+  ],
+  "lint": {
+    "debug": {
+      "errors": 0,
+      "warnings": 19
+    },
+    "release": {
+      "errors": 0,
+      "warnings": 19
+    }
+  },
+  "reboot_check": {
+    "status": "passed",
+    "serial": "emulator-5554",
+    "api": 25,
+    "app_opened_after_reboot": false,
+    "cases": [
+      {
+        "case": "enabled_restores_service_and_daily_alarm",
+        "status": "passed"
+      },
+      {
+        "case": "scheduled_photo_captured_after_reboot_without_opening_app",
+        "status": "passed"
+      },
+      {
+        "case": "disabled_stays_disabled_after_reboot",
+        "status": "passed"
+      }
+    ]
+  },
+  "upgrade_check": {
+    "status": "passed",
+    "from": "0.2.2",
+    "to": "0.3.0",
+    "api": 25,
+    "smtp_preferences_preserved": true,
+    "legacy_secrets_removed": true,
+    "legacy_alarms_removed": true,
+    "old_mail_receipt_not_resent": true,
+    "old_nonmail_photo_archived_without_email": true,
+    "photo_bytes_preserved": true,
+    "keystore_password_verified_separately_by_instrumentation": true
+  },
+  "apk": {
+    "filename": "BoilerWatch-0.3.0.apk",
+    "bytes": 1312944,
+    "sha256": "aff1cc19813ae4c264c37dc002524040fcbfe3bea454ffdb569b8d6beb96ec07",
+    "same_signing_certificate_as": "0.2.2"
+  },
+  "regressions": [
+    "Maximum supported JPEG dimensions verified on both camera emulators",
+    "SMTP MIME round-trip preserves attachment bytes",
+    "No remote-control service, polling loop or recurring connection-check alarms",
+    "Legacy secrets and old timers removed once on upgrade",
+    "Mail configuration, encrypted password and original recipients preserved",
+    "Already accepted mail is not resent and old non-mail photos are archived locally",
+    "Screen-off capture, scheduling during backlog delivery and fresh-photo priority preserved"
+  ],
+  "limitations": [
+    "Physical Redmi 4A/MIUI not tested",
+    "Real SMTP account not used",
+    "No physical-device soak test"
+  ],
+  "visual_checks": {
+    "api": 35,
+    "logical_width_dp": 360,
+    "reviewed": [
+      "Home, collapsed settings, SMTP and help",
+      "All three settings sections visible",
+      "Persistent navigation and save action",
+      "No remote-control fields or buttons"
+    ]
+  }
+}

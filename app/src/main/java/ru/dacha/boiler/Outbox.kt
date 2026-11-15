@@ -28,16 +28,13 @@ class Outbox(private val context: Context) {
     fun hasSlot(slot: Long) = (queue() + sent.listFiles().orEmpty().toList()).any {
         try { JSONObject(File(it, "report.json").readText()).optLong("slot") == slot } catch (_: Exception) { false }
     }
-    fun save(bytes: ByteArray, settings: Settings, slot: Long, remoteRequest: Long = 0): File {
+    fun save(bytes: ByteArray, settings: Settings, slot: Long): File {
         require(bytes.isNotEmpty()) { "Нельзя сохранить пустой снимок" }
         val now = System.currentTimeMillis()
         val id = "$now-${UUID.randomUUID()}"
         val staging = File(pending, ".$id").apply { check(isDirectory || mkdirs()) { "Не удалось открыть каталог архива" } }
         val report = JSONObject().put("captured", now).put("slot", slot)
             .put("recipient", settings.to).put("id", id)
-            .put("email", settings.emailPhotos).put("telegram", settings.telegramPhotos)
-            .put("telegramChat", settings.telegramChat).put("remoteRequest", remoteRequest)
-            .put("telegramBot", if (settings.telegramPhotos) settings.prefs.getString("telegramBot", "") else "")
         try {
             File(staging, "photo.jpg").outputStream().use { it.write(bytes); it.fd.sync() }
             File(staging, "report.json").outputStream().use { it.write(report.toString().toByteArray()); it.fd.sync() }
@@ -48,9 +45,6 @@ class Outbox(private val context: Context) {
             // After a successful rename this path no longer exists; failed saves leave no partial data.
             if (staging.exists()) staging.deleteRecursively()
         }
-    }
-    fun hasRemoteRequest(id: Long) = (queue() + sent.listFiles().orEmpty().toList()).any {
-        try { metadata(it).optLong("remoteRequest") == id } catch (_: Exception) { false }
     }
     fun metadata(report: File) = JSONObject(File(report, "report.json").readText())
     fun updateMetadata(report: File, data: JSONObject) {

@@ -44,10 +44,10 @@ object CameraCapture {
                 c.setErrorCallback { _, _ -> finish(null, IllegalStateException("Ошибка камеры")) }
                 val p = c.parameters
                 val sizes = p.supportedPictureSizes
-                val size = sizes.filter { it.width.toLong() * it.height <= 3_200_000L }.maxByOrNull { it.width * it.height }
-                    ?: sizes.minByOrNull { it.width * it.height }!!
+                val size = sizes.maxByOrNull { it.width.toLong() * it.height }
+                    ?: error("Камера не сообщила доступные размеры фото")
                 p.setPictureSize(size.width, size.height)
-                p.setJpegQuality(88); p.setRotation(settings.rotation)
+                p.setJpegQuality(100); p.setRotation(settings.rotation)
                 val modes = p.supportedFocusModes.orEmpty()
                 if (Camera.Parameters.FOCUS_MODE_AUTO in modes) p.focusMode = Camera.Parameters.FOCUS_MODE_AUTO
                 val flashMode = if (settings.flash) Camera.Parameters.FLASH_MODE_ON else Camera.Parameters.FLASH_MODE_OFF

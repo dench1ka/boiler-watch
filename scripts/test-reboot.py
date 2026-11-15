@@ -49,7 +49,7 @@ def main():
     def prepare(enabled):
         assert shell("pm", "clear", PACKAGE) == "Success"
         shell("pm", "grant", PACKAGE, "android.permission.CAMERA")
-        # Native preferences fixture; no token/password/real recipient or external request.
+        # Native preferences fixture; no password/real recipient or external request.
         now = int(time.time() * 1000)
         next_time = (now // 60_000 + 2) * 60_000
         zone_name = shell("getprop", "persist.sys.timezone") or "UTC"
@@ -58,13 +58,10 @@ def main():
         ET.SubElement(prefs, "boolean", name="enabled", value=str(enabled).lower())
         ET.SubElement(prefs, "long", name="next", value=str(next_time))
         ET.SubElement(prefs, "string", name="times").text = times
-        ET.SubElement(prefs, "boolean", name="emailPhotos", value="true")
         # Deliberately unreachable loopback SMTP. No external destination can be contacted.
         for key, value in {"host": "127.0.0.1", "user": "fixture", "from": "fixture@example.invalid", "to": "fixture@example.invalid"}.items():
             ET.SubElement(prefs, "string", name=key).text = value
         ET.SubElement(prefs, "int", name="port", value="9")
-        for flag in ("telegramPhotos", "remoteControl", "heartbeat"):
-            ET.SubElement(prefs, "boolean", name=flag, value="false")
         data = ET.tostring(prefs, encoding="unicode")
         shell("run-as", PACKAGE, "mkdir", "-p", "shared_prefs")
         # -T is essential: stdin must reach the app-owned file unmodified.

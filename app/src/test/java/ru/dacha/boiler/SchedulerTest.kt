@@ -24,26 +24,6 @@ class SchedulerTest {
         alarms = context.getSystemService(AlarmManager::class.java)
         Scheduler.cancel(context)
     }
-    @Test fun pauseKeepsTelegramWakeupButRemovesCameraAlarm() {
-        settings.enabled = true
-        settings.prefs.edit().putBoolean("remoteControl", true).putBoolean("paused", true).commit()
-        Scheduler.plan(context)
-        assertEquals(0L, settings.next)
-        assertEquals(1, shadowOf(alarms).scheduledAlarms.size)
-        settings.prefs.edit().putBoolean("paused", false).commit()
-        Scheduler.plan(context)
-        assertEquals(2, shadowOf(alarms).scheduledAlarms.size)
-    }
-    @Test fun statusOnlyModeDoesNotSchedulePhotos() {
-        settings.enabled = true
-        settings.prefs.edit().putBoolean("emailPhotos", false).putBoolean("heartbeat", true).commit()
-        Scheduler.plan(context)
-        assertEquals(0L, settings.next)
-        assertEquals(2, shadowOf(alarms).scheduledAlarms.size)
-        settings.enabled = false
-        Scheduler.cancel(context)
-        assertTrue(shadowOf(alarms).scheduledAlarms.isEmpty())
-    }
     @Test fun enablingPlansFutureAlarmAndPersistsTime() {
         settings.enabled = true
         Scheduler.plan(context)

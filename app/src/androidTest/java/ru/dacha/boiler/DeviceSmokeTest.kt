@@ -2,7 +2,6 @@ package ru.dacha.boiler
 
 import android.content.Context
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.view.View
 import android.view.ViewGroup
@@ -52,7 +51,8 @@ class DeviceSmokeTest {
         if (view is ViewGroup) for (i in 0 until view.childCount) findButton(view.getChildAt(i), label)?.let { return it }
         return null
     }
-    @Test fun stoppingDoesNotOverwriteRemotelyUpdatedFormValues() {
+    @Test fun stoppingUnlocksSettingsWithoutLosingSavedValues() {
+        settings.prefs.edit().putString("times", "17:45").commit()
         settings.enabled = true
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
@@ -60,7 +60,6 @@ class DeviceSmokeTest {
                 activity.window.decorView.findViewWithTag<Button>("tab_settings").performClick()
                 activity.window.decorView.findViewWithTag<Button>("section_schedule").performClick()
                 assertFalse(activity.window.decorView.findViewWithTag<EditText>("times").isEnabled)
-                config.prefs.edit().putString("times", "17:45").putBoolean("flash", true).commit()
                 findButton(activity.window.decorView, "Остановить и настроить")!!.performClick()
                 assertEquals("17:45", activity.window.decorView.findViewWithTag<EditText>("times").text.toString())
                 assertTrue(activity.window.decorView.findViewWithTag<EditText>("times").isEnabled)
@@ -73,38 +72,42 @@ class DeviceSmokeTest {
             scenario.onActivity { activity -> assertFalse(activity.currentFocus is EditText) }
         }
     }
-    @Test fun telegramTokenIsEncryptedInPreferences() {
-        val token = "123456:" + "a".repeat(32)
-        settings.prefs.edit().putString("telegramSecret", settings.encrypt(token)).commit()
-        assertEquals(token, Settings(context).token())
-        assertFalse(File(context.applicationInfo.dataDir, "shared_prefs/boiler.xml").readText().contains(token))
-    }
-    @Test fun telegramOnlySettingsCanBeSavedWithoutSmtpCredentials() {
-        settings.prefs.edit().putBoolean("emailPhotos", false).putBoolean("telegramPhotos", true)
-            .putLong("telegramChat", 123).putLong("telegramUser", 123).putString("telegramBot", "123456")
-            .putString("telegramSecret", settings.encrypt("123456:" + "a".repeat(32))).commit()
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.window.decorView.findViewWithTag<Button>("tab_settings").performClick()
-                activity.window.decorView.findViewWithTag<Button>("section_schedule").performClick()
-                activity.window.decorView.findViewWithTag<EditText>("times").setText("18:30")
-                findButton(activity.window.decorView, "Сохранить настройки")!!.performClick()
-                assertEquals("18:30", Settings(activity).times)
-                assertFalse(Settings(activity).emailPhotos)
-                assertTrue(Settings(activity).telegramPhotos)
-                assertTrue(activity.window.decorView.findViewWithTag<View>("page_home").isShown)
-            }
-        }
-    }
-    @Test fun unusedMailSettingsAreHiddenWhenEmailIsUnchecked() {
+    @Test fun mailSettingsSaveAndBlankPasswordPreservesStoredSecret() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val decor = activity.window.decorView
                 decor.findViewWithTag<Button>("tab_settings").performClick()
                 decor.findViewWithTag<Button>("section_delivery").performClick()
-                assertTrue(decor.findViewWithTag<EditText>("host").isShown)
-                (findButton(decor, "Фото на электронную почту") as CheckBox).isChecked = false
-                assertFalse(decor.findViewWithTag<EditText>("host").isShown)
+                for ((key, value) in mapOf("host" to "smtp.example.org", "port" to "465",
+                    "user" to "sender@example.org", "to" to "owner@example.org",
+                    "password" to "smtp-only-fixture"))
+                    decor.findViewWithTag<EditText>(key).setText(value)
+                findButton(decor, "Сохранить настройки")!!.performClick()
+                assertTrue(decor.findViewWithTag<View>("page_home").isShown)
+                assertEquals("smtp-only-fixture", Settings(activity).password())
+                assertEquals("sender@example.org", Settings(activity).from)
+                decor.findViewWithTag<Button>("tab_settings").performClick()
+                assertEquals("", decor.findViewWithTag<EditText>("password").text.toString())
+                decor.findViewWithTag<EditText>("to").setText("new@example.org")
+                findButton(decor, "Сохранить настройки")!!.performClick()
+                assertEquals("smtp-only-fixture", Settings(activity).password())
+                assertEquals("new@example.org", Settings(activity).to)
+            }
+        }
+    }
+    @Test fun upgradePreservesExistingKeystorePasswordAndRemovesOldSecret() {
+        val password = "upgrade-password-fixture"
+        settings.prefs.edit().remove("smtpOnlyMigrated")
+            .putString("secret", settings.encrypt(password)).putString("times", "18:30")
+            .putString("telegramSecret", settings.encrypt("obsolete-token-fixture"))
+            .putBoolean("remoteControl", true).commit()
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val upgraded = Settings(activity)
+                assertEquals(password, upgraded.password())
+                assertEquals("18:30", upgraded.times)
+                assertFalse(upgraded.prefs.contains("telegramSecret"))
+                assertFalse(upgraded.prefs.contains("remoteControl"))
             }
         }
     }
@@ -151,15 +154,14 @@ class DeviceSmokeTest {
             }
         }
     }
-    @Test fun recreationKeepsSectionAndNonSecretDraftButDoesNotSaveTokenDraft() {
+    @Test fun recreationKeepsSectionAndNonSecretDraftButDoesNotSavePasswordDraft() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val decor = activity.window.decorView
                 decor.findViewWithTag<Button>("tab_settings").performClick()
                 decor.findViewWithTag<Button>("section_delivery").performClick()
                 decor.findViewWithTag<EditText>("host").setText("smtp.example.org")
-                (findButton(decor, "Управление через Telegram") as CheckBox).isChecked = true
-                decor.findViewWithTag<EditText>("token").setText("123456:" + "x".repeat(32))
+                decor.findViewWithTag<EditText>("password").setText("unsaved-password-fixture")
             }
             scenario.recreate()
             scenario.onActivity { activity ->
@@ -167,9 +169,9 @@ class DeviceSmokeTest {
                 assertTrue(decor.findViewWithTag<View>("page_settings").isShown)
                 assertTrue(decor.findViewWithTag<EditText>("host").isShown)
                 assertEquals("smtp.example.org", decor.findViewWithTag<EditText>("host").text.toString())
-                assertTrue(decor.findViewWithTag<EditText>("token").isShown)
-                assertEquals("", decor.findViewWithTag<EditText>("token").text.toString())
-                assertEquals("", settings.token())
+                assertTrue(decor.findViewWithTag<EditText>("password").isShown)
+                assertEquals("", decor.findViewWithTag<EditText>("password").text.toString())
+                assertEquals("", settings.password())
                 assertFalse(activity.currentFocus is EditText)
             }
         }
