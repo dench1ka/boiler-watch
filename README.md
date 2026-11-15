@@ -127,4 +127,6 @@ python3 scripts/verify.py --device
 
 [GitHub Actions](.github/workflows/android.yml) выполняет сборку, unit-тесты, Lint, инструментальные проверки API25/API35 и перезагрузки API25. Тесты используют локальные фикстуры и не отправляют письма в настоящие аккаунты.
 
+Локально прошли 286 выполнений тестов без падений и пропусков, Lint — без ошибок. [GitHub Actions для 0.3.0](https://github.com/dench1ka/boiler-watch/actions/runs/43741881858) также завершился успешно: сборка, API25/API35 и перезагрузки API25.
+
 [Результаты проверок](TESTING.md) · [Хранение секретов](SECURITY.md).

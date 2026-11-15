@@ -1,7 +1,7 @@
 {
   "version": "0.3.0",
   "verified_at_utc": "2026-11-15T17:32:47.909282+00:00",
-  "source": "Local macOS ARM64 run; GitHub Actions results recorded separately",
+  "source": "Local macOS ARM64 verification plus GitHub Actions Linux x86/x86_64 verification",
   "offline_tests": 28,
   "test_results": {
     "unit_debug": {
@@ -109,6 +109,41 @@
       "All three settings sections visible",
       "Persistent navigation and save action",
       "No remote-control fields or buttons"
+    ]
+  },
+  "source_commit": "a0bef9b8c825f8455132cb2c42c3adb879d458fc",
+  "github_actions": {
+    "url": "https://github.com/dench1ka/boiler-watch/actions/runs/43741881858",
+    "conclusion": "success",
+    "source_commit": "a0bef9b8c825f8455132cb2c42c3adb879d458fc",
+    "jobs": [
+      {
+        "name": "build",
+        "conclusion": "success"
+      },
+      {
+        "name": "device-tests (35, x86_64)",
+        "conclusion": "success"
+      },
+      {
+        "name": "device-tests (25, x86)",
+        "conclusion": "success"
+      }
+    ],
+    "api25_reboot_checks": "passed",
+    "artifacts": [
+      {
+        "name": "Android-build-and-reports",
+        "id": 14172995591
+      },
+      {
+        "name": "Device-reports-api-35",
+        "id": 14172643166
+      },
+      {
+        "name": "Device-reports-api-25",
+        "id": 14172519298
+      }
     ]
   }
 }
