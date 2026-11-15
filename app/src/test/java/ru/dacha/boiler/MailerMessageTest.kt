@@ -54,4 +54,26 @@ class MailerMessageTest {
         File(dir, "photo.jpg").delete()
         assertThrows(Exception::class.java) { Mailer.compose(Session.getInstance(Properties()), "sender@example.org", dir) }
     }
+    @Test fun delayedPhotoIsMarkedInSubjectAndBodyWithOriginalCaptureTime() {
+        val dir = report(1794600000000L)
+        val session = Session.getInstance(Properties())
+        val message = Mailer.compose(session, "sender@example.org", dir, queued = true)
+        val output = ByteArrayOutputStream().also { message.writeTo(it) }
+        val parsed = MimeMessage(session, ByteArrayInputStream(output.toByteArray()))
+        assertTrue(parsed.subject.contains("ИЗ ОЧЕРЕДИ"))
+        assertTrue(parsed.subject.contains(EventLog.stamp(1794700000000L)))
+        val text = (parsed.content as MimeMultipart).getBodyPart(0).content.toString()
+        assertTrue(text.contains("это не новый снимок"))
+        assertTrue(text.contains("Фото снято: ${EventLog.stamp(1794700000000L)}"))
+        val fresh = Mailer.compose(session, "sender@example.org", dir)
+        assertFalse(fresh.subject.contains("ИЗ ОЧЕРЕДИ"))
+    }
+    @Test fun telegramCaptionDistinguishesDelayedPhotoAndPreservesSchedule() {
+        val report = JSONObject(File(report(1794600000000L), "report.json").readText())
+        val caption = ReportText.body(report, queued = true)
+        assertTrue(caption.startsWith("Из очереди:"))
+        assertTrue(caption.contains(EventLog.stamp(report.getLong("captured"))))
+        assertTrue(caption.contains("Плановое время: ${EventLog.stamp(report.getLong("slot"))}"))
+        assertFalse(ReportText.body(report, queued = false).contains("Из очереди"))
+    }
 }

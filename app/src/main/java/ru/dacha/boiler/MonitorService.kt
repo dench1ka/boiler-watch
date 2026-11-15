@@ -21,9 +21,11 @@ class MonitorService : Service() {
     }
     private val worker = Executors.newSingleThreadExecutor()
     private val busy = AtomicBoolean(false)
+    private val runAgain = AtomicBoolean(false)
     val isBusy: Boolean get() = busy.get()
     private val main = Handler(Looper.getMainLooper())
     private var telegram: TelegramLoop? = null
+    private var network: NetworkRecovery? = null
     private fun maintainTelegram() {
         val s = Settings(this)
         if (telegram == null && (s.pairing || (s.enabled && s.usesTelegram))) telegram = TelegramLoop(this)
@@ -52,6 +54,18 @@ class MonitorService : Service() {
             EventLog.add(this, "Android запретил сервис камеры: ${e.javaClass.simpleName}")
             stopSelf()
         }
+        if (instance === this) try {
+            network = NetworkRecovery(this) {
+                main.post {
+                    if (instance === this && Settings(this).enabled && Outbox(this).count() > 0) {
+                        EventLog.add(this, "Интернет восстановлен: отправляем сохранённые фото")
+                        execute(false)
+                    }
+                }
+            }
+        } catch (_: RuntimeException) {
+            EventLog.add(this, "Уведомления о сети недоступны; повторная отправка по таймеру")
+        }
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (instance === this) {
@@ -65,7 +79,10 @@ class MonitorService : Service() {
     fun execute(manual: Boolean, preview: Boolean = false) {
         if (!busy.compareAndSet(false, true)) {
             if (manual) Settings(this).status("problem", "Предыдущая операция ещё выполняется")
-            else if (Settings(this).enabled) Scheduler.retry(this)
+            else if (Settings(this).enabled) {
+                runAgain.set(true)
+                Scheduler.retry(this)
+            }
             return
         }
         val lock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "boiler:report")
@@ -86,6 +103,7 @@ class MonitorService : Service() {
                 val remoteRequest = s.prefs.getLong("remotePhoto", 0)
                 val slot = if (s.paused || !s.hasPhotoRoute) 0 else s.pendingCapture
                 var captureFailed = false
+                var fresh: File? = null
                 if (manual || (s.enabled && (slot > 0 || remoteRequest > 0))) {
                     try {
                         outbox.checkSpace()
@@ -93,7 +111,7 @@ class MonitorService : Service() {
                         if (preview) java.io.File(filesDir, "preview.jpg").outputStream().use { it.write(bytes); it.fd.sync() }
                         else {
                             require(s.hasPhotoRoute) { "Выберите канал отправки фото" }
-                            outbox.save(bytes, s, slot, remoteRequest)
+                            fresh = outbox.save(bytes, s, slot, remoteRequest)
                         }
                         s.status("lastPhoto", EventLog.stamp())
                         if (!preview) {
@@ -109,45 +127,48 @@ class MonitorService : Service() {
                         if (!manual && s.enabled) Scheduler.retry(this)
                     }
                 }
-                var deliveryFailed = false
-                // Give each channel its own time budget. An outage cannot starve the other channel.
-                for (channel in if (preview) emptyList() else listOf("email", "telegram")) {
-                    val deadline = System.currentTimeMillis() + 45_000L
-                    for (report in outbox.queue()) {
-                        if (System.currentTimeMillis() > deadline) break
-                        try {
-                            val metadata = outbox.metadata(report)
-                            val failures = Delivery.deliver(outbox, report,
-                                email = { Mailer.send(s, report); s.status("lastSent", EventLog.stamp()) },
-                                telegram = {
-                                    require(metadata.optString("telegramBot") == s.prefs.getString("telegramBot", ""))
-                                    TelegramApi(s.token()).photo(metadata.getLong("telegramChat"), File(report, "photo.jpg"),
-                                        "Котёл. Фото: ${EventLog.stamp(metadata.getLong("captured"))}\nОтчёт: ${metadata.getString("id")}")
-                                    s.status("lastTelegramPhoto", EventLog.stamp())
-                                }, channel = channel)
-                            if (failures.isNotEmpty()) throw failures.first()
-                            if (!report.exists()) EventLog.add(this, "Отчёт доставлен выбранными каналами ${report.name}")
-                        } catch (e: Exception) {
-                            deliveryFailed = true
-                            val message = when (e) {
-                                is TelegramException -> e.message!!
-                                is javax.mail.AuthenticationFailedException -> "SMTP: проверьте логин и пароль приложения"
-                                is javax.mail.MessagingException -> "SMTP: проверьте интернет, сервер, порт и TLS"
-                                else -> "$channel: отправка не выполнена (${e.javaClass.simpleName})"
-                            }
-                            s.status("problem", message); EventLog.add(this, message)
-                            val failures = (s.prefs.getInt("failures", 0) + 1).coerceAtMost(6)
-                            s.prefs.edit().putInt("failures", failures).apply()
-                            break
-                        }
+                // Leave a quiet window before the next capture; do not start another archive
+                // upload just before its alarm. Already running network calls may finish later.
+                fun yieldArchive(): Boolean = s.enabled && (
+                    (!s.paused && s.hasPhotoRoute && (s.pendingCapture > 0 ||
+                        (s.next > 0 && s.next <= System.currentTimeMillis() + 120_000L))) ||
+                    s.prefs.getLong("remotePhoto", 0) > 0)
+                val deliveryErrors = if (preview) emptyList() else Delivery.drain(outbox, fresh,
+                    email = { report, queued -> Mailer.send(s, report, queued); s.status("lastSent", EventLog.stamp()) },
+                    telegram = { report, queued ->
+                        val metadata = outbox.metadata(report)
+                        require(metadata.optString("telegramBot") == s.prefs.getString("telegramBot", ""))
+                        TelegramApi(s.token()).photo(metadata.getLong("telegramChat"), File(report, "photo.jpg"),
+                            ReportText.body(metadata, queued))
+                        s.status("lastTelegramPhoto", EventLog.stamp())
+                    },
+                    delivered = { EventLog.add(this, "Отчёт доставлен выбранными каналами ${it.name}") },
+                    yieldArchive = { yieldArchive() })
+                val deliveryFailed = deliveryErrors.isNotEmpty()
+                for ((channel, e) in deliveryErrors) {
+                    val message = when (e) {
+                        is TelegramException -> e.message!!
+                        is javax.mail.AuthenticationFailedException -> "SMTP: проверьте логин и пароль приложения"
+                        is javax.mail.MessagingException -> "SMTP: проверьте интернет, сервер, порт и TLS"
+                        else -> "$channel: отправка не выполнена (${e.javaClass.simpleName})"
                     }
+                    s.status("problem", message); EventLog.add(this, message)
+                    val failures = (s.prefs.getInt("failures", 0) + 1).coerceAtMost(6)
+                    s.prefs.edit().putInt("failures", failures).apply()
                 }
                 if (!deliveryFailed && !captureFailed && s.pendingCapture == 0L && !preview) {
                     s.status("problem", "Нет")
                     s.prefs.edit().putInt("failures", 0).apply()
                 }
-                if (s.enabled && (outbox.count() > 0 || (!s.paused && s.pendingCapture > 0) || s.prefs.getLong("remotePhoto", 0) > 0)) Scheduler.retry(this,
-                    (5L shl (s.prefs.getInt("failures", 1).coerceIn(1, 6) - 1)).coerceAtMost(60) * 60_000)
+                if (s.enabled && (outbox.count() > 0 || (!s.paused && s.pendingCapture > 0) || s.prefs.getLong("remotePhoto", 0) > 0)) {
+                    val delay = when {
+                        deliveryFailed || captureFailed ->
+                            (5L shl (s.prefs.getInt("failures", 1).coerceIn(1, 6) - 1)).coerceAtMost(60) * 60_000
+                        yieldArchive() -> 15 * 60_000L // The daily alarm will run first.
+                        else -> 10_000L // Continue a large healthy queue without waiting for another daily photo.
+                    }
+                    Scheduler.retry(this, delay)
+                }
                 outbox.cleanup()
             } catch (e: Exception) {
                 s.status("problem", "Ошибка выполнения: ${e.javaClass.simpleName}")
@@ -156,6 +177,7 @@ class MonitorService : Service() {
             } finally {
                 if (lock.isHeld) lock.release()
                 busy.set(false)
+                if (runAgain.getAndSet(false) && s.enabled) main.post { if (instance === this && Settings(this).enabled) execute(false) }
                 stopIfIdle()
             }
         }
@@ -163,6 +185,7 @@ class MonitorService : Service() {
     override fun onDestroy() {
         if (instance === this) instance = null
         telegram?.stop()
+        network?.stop()
         worker.shutdown()
         super.onDestroy()
     }

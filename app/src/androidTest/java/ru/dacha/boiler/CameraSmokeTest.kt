@@ -16,6 +16,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.CountDownLatch
 
 /** Use an emulator with -camera-back emulated; does not access a host webcam or send mail. */
 @RunWith(AndroidJUnit4::class)
@@ -73,6 +77,97 @@ class CameraSmokeTest {
             assertNotNull("Background capture is not a JPEG", bitmap)
             bitmap?.recycle()
             assertEquals("Preview must never enter the mail queue", 0, Outbox(context).count())
+        }
+    }
+    @Test fun scheduledPhotoAttemptsDeliveryBeforeBrokenOldQueueEntry() {
+        val archive = File(context.filesDir, "reports")
+        archive.deleteRecursively()
+        val broken = File(archive, "pending/000-broken").apply {
+            mkdirs(); File(this, "report.json").writeText("broken old report")
+        }
+        val connected = AtomicBoolean(false)
+        // Only accept a local connection and close it. No SMTP account, password or external server.
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 30_000
+            val receiver = Thread {
+                try { server.accept().use { connected.set(true) } } catch (_: java.io.IOException) { }
+            }.apply { isDaemon = true; start() }
+            val trigger = System.currentTimeMillis() - 1000
+            settings.prefs.edit().putBoolean("enabled", true).putLong("next", trigger)
+                .putBoolean("emailPhotos", true).putBoolean("telegramPhotos", false)
+                .putString("host", "127.0.0.1").putInt("port", server.localPort).putBoolean("ssl", false)
+                .putString("user", "local-fixture").putString("from", "sender@example.org")
+                .putString("to", "recipient@example.org").commit()
+            try {
+                ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                    scenario.onActivity { activity ->
+                        val intent = Intent(activity, MonitorService::class.java)
+                        if (Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent) else activity.startService(intent)
+                    }
+                    awaitCondition("No fresh scheduled photo: ${settings.text("problem")}") { settings.lastCapturedSlot == trigger }
+                    awaitCondition("Fresh photo was blocked by broken old report") { connected.get() }
+                    awaitCondition("Delivery did not finish") { MonitorService.instance?.isBusy == false }
+                    val reports = Outbox(context).queue()
+                    assertEquals(2, reports.size)
+                    val current = reports.single { it != broken }
+                    val metadata = Outbox(context).metadata(current)
+                    assertEquals(trigger, metadata.getLong("slot"))
+                    assertTrue(metadata.getLong("captured") >= trigger)
+                    val bitmap = BitmapFactory.decodeFile(File(current, "photo.jpg").absolutePath)
+                    assertNotNull("Scheduled photo is not a JPEG", bitmap)
+                    bitmap?.recycle()
+                }
+            } finally {
+                settings.enabled = false
+                context.stopService(Intent(context, MonitorService::class.java))
+                archive.deleteRecursively()
+                receiver.join(1000)
+            }
+        }
+    }
+    @Test fun triggerDuringArchiveUploadCapturesImmediatelyAfterCurrentRequestFinishes() {
+        val archive = File(context.filesDir, "reports")
+        archive.deleteRecursively()
+        val connected = AtomicBoolean(false)
+        val release = CountDownLatch(1)
+        ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 30_000
+            val receiver = Thread {
+                try {
+                    server.accept().use { connected.set(true); release.await(20, java.util.concurrent.TimeUnit.SECONDS) }
+                } catch (_: java.io.IOException) { }
+            }.apply { isDaemon = true; start() }
+            settings.prefs.edit().putBoolean("enabled", true).putLong("next", System.currentTimeMillis() + 3600_000)
+                .putBoolean("emailPhotos", true).putBoolean("telegramPhotos", false)
+                .putString("host", "127.0.0.1").putInt("port", server.localPort).putBoolean("ssl", false)
+                .putString("user", "local-fixture").putString("from", "sender@example.org")
+                .putString("to", "recipient@example.org").commit()
+            Outbox(context).save(byteArrayOf(1, 2, 3), settings, 1)
+            try {
+                ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                    scenario.onActivity { activity ->
+                        val intent = Intent(activity, MonitorService::class.java)
+                        if (Build.VERSION.SDK_INT >= 26) activity.startForegroundService(intent) else activity.startService(intent)
+                    }
+                    awaitCondition("Archive upload did not start") { connected.get() }
+                    val trigger = System.currentTimeMillis() - 1000
+                    settings.next = trigger
+                    // Exercise the real alarm path while the worker is blocked on an old upload.
+                    AlarmReceiver().onReceive(context, Intent(context, AlarmReceiver::class.java).setAction("daily"))
+                    release.countDown()
+                    awaitCondition("Trigger was postponed until a retry alarm: ${settings.text("problem")}") {
+                        settings.lastCapturedSlot == trigger
+                    }
+                }
+            } finally {
+                settings.enabled = false
+                release.countDown()
+                server.close()
+                context.stopService(Intent(context, MonitorService::class.java))
+                receiver.join(1000)
+                awaitCondition("Service was not stopped") { MonitorService.instance == null }
+                archive.deleteRecursively()
+            }
         }
     }
 }

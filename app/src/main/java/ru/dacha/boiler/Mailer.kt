@@ -28,10 +28,10 @@ object Mailer {
         addresses[0].validate()
         require(addresses[0].address.contains("@")) { "Укажите полный адрес почты" }
     }
-    fun send(s: Settings, dir: File) = send(
-        SmtpConnection(s.host, s.port, s.user, s.password(), s.from, s.ssl), dir)
+    fun send(s: Settings, dir: File, queued: Boolean = false) = send(
+        SmtpConnection(s.host, s.port, s.user, s.password(), s.from, s.ssl), dir, queued)
 
-    fun send(s: SmtpConnection, dir: File) {
+    fun send(s: SmtpConnection, dir: File, queued: Boolean = false) {
         val props = Properties().apply {
             setProperty("mail.smtp.auth", "true")
             setProperty("mail.smtp.connectiontimeout", "20000")
@@ -46,14 +46,14 @@ object Mailer {
             }
         }
         val session = Session.getInstance(props)
-        val message = compose(session, s.from, dir)
+        val message = compose(session, s.from, dir, queued)
         val transport = session.getTransport("smtp")
         try {
             transport.connect(s.host, s.port, s.user, s.password)
             transport.sendMessage(message, message.allRecipients)
         } finally { try { transport.close() } catch (_: Exception) { } }
     }
-    internal fun compose(session: Session, from: String, dir: File): MimeMessage {
+    internal fun compose(session: Session, from: String, dir: File, queued: Boolean = false): MimeMessage {
         val report = JSONObject(File(dir, "report.json").readText())
         validateAddress(from)
         validateAddress(report.getString("recipient"))
@@ -62,13 +62,11 @@ object Mailer {
         return MimeMessage(session).apply {
             setFrom(InternetAddress(from))
             setRecipients(Message.RecipientType.TO, InternetAddress.parse(report.getString("recipient"), true))
-            setSubject("Котёл: фото от ${EventLog.stamp(report.getLong("captured"))}", "UTF-8")
+            setSubject(ReportText.title(report, queued), "UTF-8")
             sentDate = Date()
-            val scheduled = report.getLong("slot")
             val body = MimeBodyPart().apply {
-                setText("Фото снято: ${EventLog.stamp(report.getLong("captured"))}\n" +
-                    (if (scheduled > 0) "Плановое время: ${EventLog.stamp(scheduled)}\n" else "Ручная проверка\n") +
-                    "Отчёт: ${report.getString("id")}\nСнимок приложен. Приложение не оценивает состояние котла автоматически.", "UTF-8")
+                setText(ReportText.body(report, queued) +
+                    "\nСнимок приложен. Приложение не оценивает состояние котла автоматически.", "UTF-8")
             }
             val photo = MimeBodyPart().apply {
                 attachFile(photoFile); fileName = "boiler-${report.getLong("captured")}.jpg"

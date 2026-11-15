@@ -77,4 +77,79 @@ class DeliveryTest {
         Delivery.deliver(outbox,r,{fail("Wrong phase")},{telegram++},channel="telegram")
         assertEquals(0,outbox.count());assertEquals(1,telegram)
     }
+    private fun savedAt(time: Long): File {
+        val original = report()
+        return File(original.parentFile, "$time-fixture").also { assertTrue(original.renameTo(it)) }
+    }
+    @Test fun currentPhotoReachesBothChannelsBeforeAnyBacklog() {
+        val yesterday = savedAt(1)
+        val today = savedAt(2)
+        val events = mutableListOf<String>()
+        assertTrue(Delivery.drain(outbox, today,
+            { r, queued -> events.add("email:${r.name}:$queued") },
+            { r, queued -> events.add("telegram:${r.name}:$queued") }).isEmpty())
+        assertEquals(listOf("email:${today.name}:false", "telegram:${today.name}:false",
+            "email:${yesterday.name}:true", "telegram:${yesterday.name}:true"), events)
+        assertEquals(0, outbox.count())
+    }
+    @Test fun brokenOldReportCannotBlockTodaysPhoto() {
+        File(s.context.filesDir, "reports/pending/broken").apply { mkdirs(); File(this, "report.json").writeText("corrupt") }
+        val today = savedAt(2)
+        val sent = mutableListOf<File>()
+        val failures = Delivery.drain(outbox, today, { r, _ -> sent.add(r) }, { r, _ -> sent.add(r) })
+        assertEquals(listOf(today, today), sent)
+        assertEquals(2, failures.size)
+        assertEquals(1, outbox.count())
+    }
+    @Test fun recoverySendsNewestFirstThenDrainsAllOlderPhotos() {
+        val oldest = savedAt(1); val middle = savedAt(2); val newest = savedAt(3)
+        val mail = mutableListOf<File>(); val tg = mutableListOf<File>()
+        Delivery.drain(outbox, null,
+            { r, queued -> assertTrue(queued); mail.add(r) },
+            { r, queued -> assertTrue(queued); tg.add(r) })
+        assertEquals(listOf(newest, oldest, middle), mail)
+        assertEquals(mail, tg)
+        assertEquals(0, outbox.count())
+    }
+    @Test fun failingOldSmtpCannotDelayFreshTelegramOrItsBacklog() {
+        val old = savedAt(1); val fresh = savedAt(2)
+        val events = mutableListOf<String>()
+        val errors = Delivery.drain(outbox, fresh,
+            { r, _ -> events.add("email:${r.name}"); if (r == old) throw IOException() },
+            { r, _ -> events.add("telegram:${r.name}") })
+        assertEquals(listOf("email:${fresh.name}", "telegram:${fresh.name}", "email:${old.name}", "telegram:${old.name}"), events)
+        assertEquals(listOf("email"), errors.map { it.first })
+        assertTrue(outbox.metadata(old).getBoolean("telegramDone"))
+        Delivery.drain(outbox, null, { _, _ -> email++ }, { _, _ -> fail("Already delivered to Telegram") })
+        assertEquals(0, outbox.count())
+    }
+    @Test fun failingFreshChannelStillAllowsOtherChannelToDrain() {
+        val old = savedAt(1); val fresh = savedAt(2)
+        val tg = mutableListOf<File>()
+        val errors = Delivery.drain(outbox, fresh, { _, _ -> throw IOException() }, { r, _ -> tg.add(r) })
+        assertEquals(listOf(fresh, old), tg)
+        assertEquals(listOf("email"), errors.map { it.first })
+        assertEquals(2, outbox.count())
+    }
+    @Test fun imminentTriggerDefersArchiveButStillSendsCurrentPhoto() {
+        val old = savedAt(1); val fresh = savedAt(2)
+        Delivery.drain(outbox, fresh, { r, _ -> assertEquals(fresh, r) },
+            { r, _ -> assertEquals(fresh, r) }, yieldArchive = { true })
+        assertEquals(listOf(old), outbox.queue())
+        Delivery.drain(outbox, null, { _, _ -> fail("Capture is due first") },
+            { _, _ -> fail("Capture is due first") }, yieldArchive = { true })
+        assertEquals(listOf(old), outbox.queue())
+    }
+    @Test fun backlogBudgetsAreIndependentAndPreserveUnsentPhotosForNextPass() {
+        savedAt(1); val fresh = savedAt(2)
+        var time = 0L
+        val emails = mutableListOf<File>(); val tg = mutableListOf<File>()
+        Delivery.drain(outbox, fresh, { r, _ -> emails.add(r) },
+            { r, _ -> tg.add(r) }, clock = { time.also { time += 45_000 } })
+        assertEquals(listOf(fresh), emails); assertEquals(listOf(fresh), tg)
+        assertEquals(1, outbox.count())
+        Delivery.drain(Outbox(s.context), null, { _, queued -> assertTrue(queued) },
+            { _, queued -> assertTrue(queued) })
+        assertEquals(0, outbox.count())
+    }
 }
