@@ -73,6 +73,11 @@ def main():
         launch = shell("am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
         assert "Status: ok" in launch, launch
         shell("input", "keyevent", "KEYCODE_HOME")
+        # This raw fixture must have the same durability as SharedPreferences.commit().
+        shell("sync")
+        saved = ET.fromstring(shell("run-as", PACKAGE, "cat", "shared_prefs/boiler.xml"))
+        assert saved.find("boolean[@name='enabled']").get("value") == str(enabled).lower()
+        (out / ("prepared-enabled-package.txt" if enabled else "prepared-disabled-package.txt")).write_text(shell("dumpsys", "package", PACKAGE))
         return next_time
 
     def reboot(label):
@@ -169,6 +174,21 @@ def main():
                   "app_opened_after_reboot": False, "cases": cases}
         (out / "summary.json").write_text(json.dumps(report, indent=2) + "\n")
     except Exception as error:
+        diagnostics = {
+            "failure-users": ["dumpsys", "user"],
+            "failure-package": ["dumpsys", "package", PACKAGE],
+            "failure-services": ["dumpsys", "activity", "services", PACKAGE],
+            "failure-alarms": ["dumpsys", "alarm"],
+            "failure-logcat": ["logcat", "-d", "-v", "time"],
+            "failure-preferences": ["run-as", PACKAGE, "cat", "shared_prefs/boiler.xml"],
+        }
+        for name, command in diagnostics.items():
+            try:
+                result = subprocess.run([adb, "-s", args.serial, "shell", *command], text=True,
+                                        capture_output=True, timeout=10)
+                (out / (name + ".txt")).write_text(result.stdout + result.stderr)
+            except Exception:
+                pass
         (out / "summary.json").write_text(json.dumps({"status": "failed", "error": str(error), "cases": cases}, indent=2) + "\n")
         raise
     finally:
