@@ -1,0 +1,69 @@
+{
+  "version": "0.2.0",
+  "verified_at_utc": "2026-11-15T11:53:43.240733+00:00",
+  "source": "Local macOS ARM64 run; not a GitHub Actions result",
+  "offline_tests": 28,
+  "test_results": {
+    "unit_debug": {
+      "tests": 142,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unit_release": {
+      "tests": 142,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "devices": {
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "android_emulators": [
+    {
+      "api": 25,
+      "version": "7.1.1",
+      "abi": "arm64-v8a",
+      "tests": 11
+    },
+    {
+      "api": 35,
+      "version": "15",
+      "abi": "arm64-v8a",
+      "tests": 11
+    }
+  ],
+  "reboot_checks": [
+    {
+      "case": "enabled_restores_service_and_daily_alarm",
+      "status": "passed"
+    },
+    {
+      "case": "scheduled_photo_captured_after_reboot_without_opening_app",
+      "status": "passed"
+    },
+    {
+      "case": "disabled_stays_disabled_after_reboot",
+      "status": "passed"
+    }
+  ],
+  "lint": {
+    "debug": {
+      "errors": 0,
+      "warnings": 26
+    },
+    "release": {
+      "errors": 0,
+      "warnings": 26
+    }
+  },
+  "limitations": [
+    "Physical Redmi 4A/MIUI not tested",
+    "Real Telegram token and SMTP account not used",
+    "No 48–72 hour physical-device soak test"
+  ]
+}
