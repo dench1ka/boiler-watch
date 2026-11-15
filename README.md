@@ -8,7 +8,7 @@ Android-приложение для ежедневных фотографий п
 
 **Версия:** 0.2.2 · **Минимум:** Android 6.0 / API 23 · **Целевая версия:** Android 15 / API 35.
 
-**[Скачать APK 0.2.2 — 1,33 МБ](https://github.com/dench1ka/boiler-watch/releases/download/v0.2.2/BoilerWatch-0.2.2.apk)** · [Описание тестового релиза и SHA-256](https://github.com/dench1ka/boiler-watch/releases/tag/v0.2.2).
+**[Скачать APK 0.2.2 — 1,42 МБ](https://github.com/dench1ka/boiler-watch/releases/download/v0.2.2/BoilerWatch-0.2.2.apk)** · [Описание тестового релиза и SHA-256](https://github.com/dench1ka/boiler-watch/releases/tag/v0.2.2).
 
 Первоначальное целевое устройство — Redmi 4A с Android 7.1.2 и MIUI 10.2.3. Автотесты выполнены на эмуляторах Android 7.1.1 и Android 15. Проверка на физическом Redmi ещё предстоит.
 
@@ -208,9 +208,7 @@ python3 scripts/test-reboot.py --serial emulator-5554
 
 [GitHub Actions](.github/workflows/android.yml) собирает APK, запускает unit-тесты и Lint, затем инструментальные тесты на API 25 и 35 и перезагрузки на API 25. Отчёты и APK доступны в артефактах соответствующего запуска. Первую загрузку зависимостей CI выполняет самостоятельно; токены бота и SMTP-пароли для тестов не нужны.
 
-[Успешный прогон CI для версии 0.2.1](https://github.com/dench1ka/boiler-watch/actions/runs/43724092039): сборка, тесты на API 25 и 35, включая перезагрузки API 25.
-
-[Предыдущий успешный прогон CI для версии 0.2.0](https://github.com/dench1ka/boiler-watch/actions/runs/43714087017): сборка, тесты на API 25 и 35, включая перезагрузки API 25.
+[Успешный прогон CI для версии 0.2.2](https://github.com/dench1ka/boiler-watch/actions/runs/43733353115): сборка, unit-тесты, Lint, инструментальные проверки API25 и API35, перезагрузки API25. Предыдущие результаты сохранены в [TESTING.md](TESTING.md).
 
 `verify.py` сохраняет журналы в локальную папку `artifacts/verification`. Код `0` означает успех всех запрошенных проверок, `1` — падение, `2` — отсутствующее окружение или незапущенный этап. Без `--device` инструментальные тесты помечаются `not_run`, а не успешными.
 

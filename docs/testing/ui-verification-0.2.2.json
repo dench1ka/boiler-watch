@@ -58,7 +58,6 @@
   "limitations": [
     "Physical Redmi 4A/MIUI not tested",
     "Real Telegram token and SMTP account not used",
-    "Local reboot checks belong to 0.2.1; 0.2.2 reboot checks run in CI",
     "No 48–72 hour physical-device soak test"
   ],
   "visual_checks": {
@@ -76,7 +75,23 @@
       "All three collapsed settings sections visible",
       "Persistent navigation and save action",
       "Android15 system-bar contrast",
-      "Real system Back returns home"
+      "Real system Back returns home",
+      "Keyboard layout at 360dp on API35",
+      "First Back closes keyboard; second returns home on API35"
     ]
+  },
+  "upgrade_check": {
+    "from": "0.2.1",
+    "to": "0.2.2",
+    "api": 25,
+    "status": "passed",
+    "preferences_preserved": true,
+    "home_displays_original_schedule": true
+  },
+  "github_actions": {
+    "url": "https://github.com/dench1ka/boiler-watch/actions/runs/43733353115",
+    "conclusion": "success",
+    "source_commit": "f2480a16fc0224fcbdaac58634f169d0ef67a278",
+    "api25_reboot_checks": "passed"
   }
 }
