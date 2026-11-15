@@ -61,7 +61,32 @@
   "limitations": [
     "Physical Redmi 4A/MIUI not tested",
     "Real Telegram token and SMTP account not used",
-    "Reboot evidence for 0.2.0 is separate; 0.2.1 reboot checks run in CI",
     "No 48–72 hour physical-device soak test"
-  ]
+  ],
+  "upgrade_check": {
+    "from": "0.2.0",
+    "to": "0.2.1",
+    "api": 25,
+    "status": "passed",
+    "preferences_preserved": true
+  },
+  "reboot_checks": [
+    {
+      "case": "enabled_restores_service_and_daily_alarm",
+      "status": "passed"
+    },
+    {
+      "case": "scheduled_photo_captured_after_reboot_without_opening_app",
+      "status": "passed"
+    },
+    {
+      "case": "disabled_stays_disabled_after_reboot",
+      "status": "passed"
+    }
+  ],
+  "github_actions": {
+    "url": "https://github.com/dench1ka/boiler-watch/actions/runs/43724092039",
+    "conclusion": "success",
+    "source_commit": "e3f77d13e0849c2dc989b04dc6c5454dc6804fbe"
+  }
 }
