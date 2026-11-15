@@ -73,6 +73,11 @@ def main():
         launch = shell("am", "start", "-W", "-n", PACKAGE + "/.MainActivity")
         assert "Status: ok" in launch, launch
         shell("input", "keyevent", "KEYCODE_HOME")
+        # Android 7 persists its stopped/notLaunched package flags on a delayed handler.
+        # A reboot immediately after this first launch can restore the earlier "stopped"
+        # package state, even though dumpsys already shows stopped=false in memory.
+        # Allow the package manager's delayed write before testing BOOT_COMPLETED.
+        time.sleep(15)
         # This raw fixture must have the same durability as SharedPreferences.commit().
         shell("sync")
         saved = ET.fromstring(shell("run-as", PACKAGE, "cat", "shared_prefs/boiler.xml"))
