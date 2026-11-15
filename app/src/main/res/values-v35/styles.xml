@@ -1,0 +1,9 @@
+<resources>
+    <!-- Android 15 draws content behind transparent system bars. Keep the icons readable. -->
+    <style name="AppTheme" parent="BaseAppTheme">
+        <item name="android:statusBarColor">#F3F6F4</item>
+        <item name="android:navigationBarColor">#F3F6F4</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

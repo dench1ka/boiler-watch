@@ -53,13 +53,17 @@ class DeviceSmokeTest {
         return null
     }
     @Test fun stoppingDoesNotOverwriteRemotelyUpdatedFormValues() {
+        settings.enabled = true
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val config = Settings(activity)
-                config.enabled = true
+                activity.window.decorView.findViewWithTag<Button>("tab_settings").performClick()
+                activity.window.decorView.findViewWithTag<Button>("section_schedule").performClick()
+                assertFalse(activity.window.decorView.findViewWithTag<EditText>("times").isEnabled)
                 config.prefs.edit().putString("times", "17:45").putBoolean("flash", true).commit()
-                findButton(activity.window.decorView, "Остановить наблюдение")!!.performClick()
+                findButton(activity.window.decorView, "Остановить и настроить")!!.performClick()
                 assertEquals("17:45", activity.window.decorView.findViewWithTag<EditText>("times").text.toString())
+                assertTrue(activity.window.decorView.findViewWithTag<EditText>("times").isEnabled)
                 assertFalse(config.enabled)
             }
         }
@@ -81,11 +85,14 @@ class DeviceSmokeTest {
             .putString("telegramSecret", settings.encrypt("123456:" + "a".repeat(32))).commit()
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
+                activity.window.decorView.findViewWithTag<Button>("tab_settings").performClick()
+                activity.window.decorView.findViewWithTag<Button>("section_schedule").performClick()
                 activity.window.decorView.findViewWithTag<EditText>("times").setText("18:30")
                 findButton(activity.window.decorView, "Сохранить настройки")!!.performClick()
                 assertEquals("18:30", Settings(activity).times)
                 assertFalse(Settings(activity).emailPhotos)
                 assertTrue(Settings(activity).telegramPhotos)
+                assertTrue(activity.window.decorView.findViewWithTag<View>("page_home").isShown)
             }
         }
     }
@@ -93,6 +100,8 @@ class DeviceSmokeTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val decor = activity.window.decorView
+                decor.findViewWithTag<Button>("tab_settings").performClick()
+                decor.findViewWithTag<Button>("section_delivery").performClick()
                 assertTrue(decor.findViewWithTag<EditText>("host").isShown)
                 (findButton(decor, "Фото на электронную почту") as CheckBox).isChecked = false
                 assertFalse(decor.findViewWithTag<EditText>("host").isShown)
@@ -100,6 +109,7 @@ class DeviceSmokeTest {
         }
     }
     @Test fun mainScreenOpensAndCanStopMonitoring() {
+        settings.enabled = true
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 fun find(view: View): Button? {
@@ -111,6 +121,73 @@ class DeviceSmokeTest {
                 assertNotNull(button)
                 button!!.performClick()
                 assertFalse(Settings(activity).enabled)
+            }
+        }
+    }
+    @Test fun navigationKeepsDraftsAndBackReturnsToHome() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val decor = activity.window.decorView
+                assertTrue(decor.findViewWithTag<View>("page_home").isShown)
+                assertFalse(decor.findViewWithTag<View>("page_settings").isShown)
+                for (tab in listOf("home", "settings", "help")) assertTrue(decor.findViewWithTag<Button>("tab_$tab").isShown)
+                decor.findViewWithTag<Button>("tab_settings").performClick()
+                for (section in listOf("schedule", "delivery", "camera")) assertTrue(decor.findViewWithTag<Button>("section_$section").isShown)
+                decor.findViewWithTag<Button>("section_schedule").performClick()
+                decor.findViewWithTag<EditText>("times").setText("18:40")
+                decor.findViewWithTag<Button>("section_delivery").performClick()
+                decor.findViewWithTag<EditText>("host").setText("smtp.example.org")
+                decor.findViewWithTag<Button>("tab_help").performClick()
+                assertFalse(decor.findViewWithTag<EditText>("host").isShown)
+                @Suppress("DEPRECATION")
+                activity.onBackPressed()
+                assertTrue(decor.findViewWithTag<View>("page_home").isShown)
+                decor.findViewWithTag<Button>("tab_settings").performClick()
+                assertEquals("18:40", decor.findViewWithTag<EditText>("times").text.toString())
+                assertEquals("smtp.example.org", decor.findViewWithTag<EditText>("host").text.toString())
+                assertTrue(decor.findViewWithTag<EditText>("host").isShown)
+                assertFalse(decor.findViewWithTag<EditText>("times").isShown)
+                assertEquals("09:00", settings.times)
+            }
+        }
+    }
+    @Test fun recreationKeepsSectionAndNonSecretDraftButDoesNotSaveTokenDraft() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val decor = activity.window.decorView
+                decor.findViewWithTag<Button>("tab_settings").performClick()
+                decor.findViewWithTag<Button>("section_delivery").performClick()
+                decor.findViewWithTag<EditText>("host").setText("smtp.example.org")
+                (findButton(decor, "Управление через Telegram") as CheckBox).isChecked = true
+                decor.findViewWithTag<EditText>("token").setText("123456:" + "x".repeat(32))
+            }
+            scenario.recreate()
+            scenario.onActivity { activity ->
+                val decor = activity.window.decorView
+                assertTrue(decor.findViewWithTag<View>("page_settings").isShown)
+                assertTrue(decor.findViewWithTag<EditText>("host").isShown)
+                assertEquals("smtp.example.org", decor.findViewWithTag<EditText>("host").text.toString())
+                assertTrue(decor.findViewWithTag<EditText>("token").isShown)
+                assertEquals("", decor.findViewWithTag<EditText>("token").text.toString())
+                assertEquals("", settings.token())
+                assertFalse(activity.currentFocus is EditText)
+            }
+        }
+    }
+    @Test fun validationOpensTheSettingsSectionThatNeedsAttention() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val decor = activity.window.decorView
+                findButton(decor, "Включить наблюдение")!!.performClick()
+                assertTrue(decor.findViewWithTag<View>("page_settings").isShown)
+                assertTrue(decor.findViewWithTag<EditText>("host").isShown)
+                assertFalse(settings.enabled)
+                decor.findViewWithTag<Button>("section_schedule").performClick()
+                decor.findViewWithTag<EditText>("times").setText("bad time")
+                findButton(decor, "Сохранить настройки")!!.performClick()
+                assertTrue(decor.findViewWithTag<EditText>("times").isShown)
+                assertFalse(decor.findViewWithTag<EditText>("host").isShown)
+                assertFalse(settings.enabled)
             }
         }
     }
